@@ -1,204 +1,129 @@
+# pip install crewai azure-search-documents openai pydantic
+# pip install langchain-docling langchain-core langchain python-dotenv
 import os
-from operator import itemgetter
-from typing import List, Dict, Any
+import glob
+import tiktoken
+from typing import List
+from pathlib import Path
 
-# --- Azure OpenAI (via Azure AI Foundry) ---
-# SDK: https://learn.microsoft.com/azure/ai-foundry/openai/how-to/chatgpt
-from openai import OpenAI
 
-# --- Azure AI Search (vector search) ---
-# SDK: https://learn.microsoft.com/python/api/overview/azure/search-documents-readme
-from azure.search.documents import SearchClient
-from azure.core.credentials import AzureKeyCredential
+from dotenv import load_dotenv
+from langchain_docling.loader import ExportType
+from langchain_core.prompts import PromptTemplate
 
-# --- CrewAI ---
-from crewai import Agent, Task, Crew, Tool
+from docling.chunking import HybridChunker
+from langchain_docling import DoclingLoader
+from langchain_text_splitters import MarkdownHeaderTextSplitter
+from docling_core.transforms.chunker.tokenizer.openai import OpenAITokenizer
 
-# -------------------------
-# ENV VARS (set these!)
-# -------------------------
-# Azure AI Foundry / Azure OpenAI
+from langchain_openai import AzureOpenAIEmbeddings
+from langchain_community.vectorstores.azuresearch import AzureSearch
+
+# from langchain_core.document_loaders import BaseLoader
+# from langchain_core.text_splitter import RecursiveCharacterTextSplitter
+
+# from langchain_core.vectorstores import InMemoryVectorStore
+# from langchain_core.chains import RetrievalQA
+# from langchain_core.llms import AzureChatOpenAI
+
+load_dotenv()
+
+# ==== ENV (настрой ↓) ====
+AZURE_OPENAI_ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
 AZURE_OPENAI_API_KEY = os.environ["AZURE_OPENAI_API_KEY"]
-AZURE_OPENAI_ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]  # e.g. "https://<your-foundry-endpoint>.openai.azure.com"
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-oss-120b")    # your chat model deployment name
-AZURE_OPENAI_EMBED_DEPLOYMENT = os.environ.get("AZURE_OPENAI_EMBED_DEPLOYMENT", "text-embedding-3-large")  # your embed model deployment name
+os.environ["AZURE_OPENAI_ENDPOINT"] = os.getenv("AZURE_OPENAI_ENDPOINT")
+os.environ["AZURE_OPENAI_API_KEY"] = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4o")
+AZURE_EMBED_DEPLOYMENT = os.environ.get("AZURE_OPENAI_EMBED_DEPLOYMENT", "text-embedding-3-large")
+AZURE_OPENAI_EMBED_API_VERSION = os.environ.get("AZURE_OPENAI_EMBED_API_VERSION", "2024-12-01-preview")
 
-# Azure AI Search
-AZURE_SEARCH_ENDPOINT = os.environ["AZURE_SEARCH_ENDPOINT"]  # e.g. "https://<your-search>.search.windows.net"
-AZURE_SEARCH_INDEX = os.environ["AZURE_SEARCH_INDEX"]        # your vector-enabled index name
+AZURE_SEARCH_ENDPOINT = os.environ["AZURE_SEARCH_ENDPOINT"]
 AZURE_SEARCH_API_KEY = os.environ["AZURE_SEARCH_API_KEY"]
-
-# Retrieval settings
+AZURE_SEARCH_INDEX = os.environ["AZURE_SEARCH_INDEX"]
+# VECTOR_FIELD = os.environ.get("AZURE_SEARCH_VECTOR_FIELD", "contentVector")
 TOP_K = int(os.environ.get("TOP_K", "4"))
-EMBED_DIM = int(os.environ.get("EMBED_DIM", "3072"))  # text-embedding-3-large; adjust if you use a different model
 
-# -------------------------
-# Azure clients
-# -------------------------
-# Azure OpenAI (Foundry) client
-# Docs: chat completions / embeddings usage via Foundry models.
-client = OpenAI(
-    base_url=f"{AZURE_OPENAI_ENDPOINT}/openai/v1",
-    api_key=AZURE_OPENAI_API_KEY,
-    default_headers={"api-key": AZURE_OPENAI_API_KEY},  # Foundry expects this header
-)
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["AZURESEARCH_FIELDS_CONTENT_VECTOR"] = "contentVector"
+os.environ["AZURESEARCH_FIELDS_TAG"] = "meta_json_string"
 
-# Azure Search client
-search_client = SearchClient(
-    endpoint=AZURE_SEARCH_ENDPOINT,
-    index_name=AZURE_SEARCH_INDEX,
-    credential=AzureKeyCredential(AZURE_SEARCH_API_KEY),
-)
+SUPPORTED_EXTENSIONS = {
+    ".pdf": "docling",
+    ".docx": "docling",
+    ".pptx": "docling",
+    ".html": "docling",
+    ".md": "markdown",
+    ".json": "docling",
+}
 
-# -------------------------
-# Embedding & LLM helpers
-# -------------------------
-def embed_text(text: str) -> List[float]:
-    """
-    Get embeddings from Azure OpenAI (Foundry).
-    """
-    resp = client.embeddings.create(
-        model=AZURE_OPENAI_EMBED_DEPLOYMENT,
-        input=text,
-    )
-    return resp.data[0].embedding
+def load_file(path: str) -> List:
+    ext = Path(path).suffix.lower()
+    if ext in SUPPORTED_EXTENSIONS and SUPPORTED_EXTENSIONS[ext] == "docling":
+        loader = DoclingLoader(
+                    file_path=path,
+                    export_type=ExportType.DOC_CHUNKS,
+                    # chunker=HybridChunker(
+                    #     tokenizer = OpenAITokenizer(
+                    #             tokenizer=tiktoken.encoding_for_model("gpt-oss-120b"),
+                    #             max_tokens=128 * 1024,
+                    #         )
+                    #     ),
+                )
+    elif ext in SUPPORTED_EXTENSIONS and SUPPORTED_EXTENSIONS[ext] == "markdown":
+        loader = DoclingLoader(
+                    file_path=path,
+                    export_type=ExportType.MARKDOWN,
+                    # chunker=HybridChunker(
+                    #     tokenizer = OpenAITokenizer(
+                    #             tokenizer=tiktoken.encoding_for_model("gpt-oss-120b"),
+                    #             max_tokens=128 * 1024,
+                    #         )
+                    #     ),
+                )
+        docs = loader.load()
+        splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=[
+                ("#", "Header_1"),
+                ("##", "Header_2"),
+                ("###", "Header_3"),
+            ],
+        )
+        return [split for doc in docs for split in splitter.split_text(doc.page_content)]
+    else:
+        raise ValueError(f"Unsupported file type {ext} for path {path}")
+    return loader.load()
 
-def chat_complete(system_prompt: str, user_prompt: str) -> str:
-    """
-    Call Azure OpenAI chat completion (Foundry).
-    """
-    resp = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.2,
-    )
-    return resp.choices[0].message.content
-
-# -------------------------
-# Retriever over Azure AI Search
-# -------------------------
-def search_top_k(query: str, top_k: int = TOP_K) -> List[Dict[str, Any]]:
-    """
-    Vector search over Azure AI Search.
-    Assumes your index has:
-      - a vector field (e.g., 'contentVector') with EMBED_DIM dims
-      - a content text field (e.g., 'content')
-      - optional metadata fields like 'source', 'page'
-    """
-    query_vec = embed_text(query)
-    vector_query = {
-        "value": query_vec,
-        "fields": "contentVector",  # <-- change to your vector field name
-        "k": top_k,
-    }
-
-    # You can combine with keyword search by setting search_text=query (hybrid).
-    results = search_client.search(
-        search_text=None,
-        vector=vector_query,
-        select=["content", "source", "page"],  # <-- modify to match your schema
-        top=top_k,
-    )
-
-    hits = []
-    for r in results:
-        hits.append({
-            "content": r["content"],
-            "source": r.get("source"),
-            "page": r.get("page"),
-        })
-    return hits
-
-def build_context(chunks: List[Dict[str, Any]]) -> str:
-    """
-    Concatenate retrieved chunks into a prompt-friendly context.
-    """
-    parts = []
-    for i, ch in enumerate(chunks, start=1):
-        src = f"(source={ch.get('source')}, page={ch.get('page')})" if (ch.get("source") or ch.get("page")) else ""
-        parts.append(f"[{i}] {src}\n{ch['content']}")
-    return "\n\n".join(parts)
-
-# -------------------------
-# CrewAI Tool
-# -------------------------
-def rag_tool_func(question: str) -> str:
-    """
-    Full RAG flow:
-      1) retrieve from Azure Search
-      2) build context
-      3) ask Azure OpenAI to answer strictly from context
-    """
-    docs = search_top_k(question, TOP_K)
-    context = build_context(docs)
-
-    system_prompt = (
-        "You are a helpful assistant that answers ONLY using the provided context. "
-        "If the answer cannot be found in the context, say you don't know."
-    )
-    user_prompt = (
-        f"Context:\n{context}\n\n"
-        f"Question: {question}\n\n"
-        "Instructions:\n"
-        "- Cite the bracket numbers [1], [2], ... when relevant.\n"
-        "- If insufficient information, say 'I don't know based on the provided documents.'"
-    )
-
-    answer = chat_complete(system_prompt, user_prompt)
-
-    # Optional: bundle sources at the end
-    sources = []
-    for i, d in enumerate(docs, start=1):
-        tag = f"[{i}]"
-        src = d.get("source")
-        pg = d.get("page")
-        if src or pg:
-            sources.append(f"{tag} {src or ''} {('p.' + str(pg)) if pg else ''}".strip())
-
-    if sources:
-        answer += "\n\nSources:\n" + "\n".join(sources)
-
-    return answer
-
-rag_tool = Tool(
-    name="AzureSearchRAG",
-    description="Answers questions using Azure AI Search (vector) and Azure OpenAI (Foundry) based on indexed PDF chunks.",
-    func=rag_tool_func,
-    return_direct=True,
-)
-
-# -------------------------
-# CrewAI Agent & Task
-# -------------------------
-qa_agent = Agent(
-    role="PDF Q&A Agent",
-    goal="Answer user questions strictly using the enterprise PDF knowledge indexed in Azure AI Search.",
-    backstory=(
-        "You are an internal assistant for PDF knowledge. "
-        "Use the AzureSearchRAG tool; never invent facts beyond retrieved context."
-    ),
-    tools=[rag_tool],
-    verbose=True,
-)
-
-qa_task = Task(
-    description="Answer the user's question using only the information from the indexed PDF content.",
-    agent=qa_agent,
-    expected_output="A concise answer grounded in the provided PDF context, with bracketed citations.",
-)
-
-crew = Crew(
-    agents=[qa_agent],
-    tasks=[qa_task],
-    verbose=True,
-)
+def load_folder(folder: str) -> List:
+    docs = []
+    for root, _, files in os.walk(folder):
+        for fname in files:
+            fpath = os.path.join(root, fname)
+            try:
+                docs.extend(load_file(fpath))
+                print(f"Loaded {fpath}")
+            except Exception as e:
+                print(f"Skipped {fpath}: {e}")
+    return docs
 
 if __name__ == "__main__":
-    # Example run
-    user_q = input("Ask a question about your PDFs: ")
-    result = crew.kickoff(inputs={"question": user_q})
-    print("\n=== ANSWER ===\n")
-    print(result)
+    all_docs = load_folder("data")
+    
+    # for d in all_docs:
+    #     print(d)
+
+    aoai_embeddings = AzureOpenAIEmbeddings(
+        model=AZURE_EMBED_DEPLOYMENT,         # имя деплоймента эмбеддингов в Azure OpenAI
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        openai_api_key=AZURE_OPENAI_API_KEY,
+    )
+
+    vector_store: AzureSearch = AzureSearch(
+        azure_search_endpoint=AZURE_SEARCH_ENDPOINT,
+        azure_search_key=AZURE_SEARCH_API_KEY,
+        index_name=AZURE_SEARCH_INDEX,
+        embedding_function=aoai_embeddings.embed_query,
+        # metadata_key="meta_json_string",
+    )
+
+    # добавляем документы (chunk’и Docling → векторный индекс)
+    _ = vector_store.add_documents(all_docs)
