@@ -1,6 +1,3 @@
-# pip install crewai azure-search-documents openai pydantic
-# pip install langchain-docling langchain-core langchain python-dotenv
-# pip install "docling~=2.12" azure-search-documents==11.5.2 azure-identity openai rich torch python-dotenv
 import os
 import re
 import logging
@@ -41,7 +38,7 @@ load_dotenv()
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[RichHandler(), logging.FileHandler("rag.log", mode="w")],
+    handlers=[RichHandler(), logging.FileHandler("rag.txt", mode="w")],
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("RAG")
@@ -393,9 +390,9 @@ if __name__ == "__main__":
     question = "What is attention mechanizm?"
     result = graph.invoke({"question": question})
 
-    print("\n=== FINAL ANSWER ===\n")
-    print(result["answer"])
-    print("\n=== DEBUG ===")
-    print("Rewrites:", result.get("rewrites"))
-    print("Ranked:", result.get("ranked"))
+    logger.info("=== FINAL ANSWER ===")
+    logger.info(result.get("answer"))
+    logger.info("=== DEBUG ===")
+    logger.info("Rewrites: %s", result.get("rewrites"))
+    logger.info("Ranked: %s", result.get("ranked"))
     logging.shutdown()
