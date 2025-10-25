@@ -1,4 +1,4 @@
-# RAG Application with Azure OpenAI and Vector Search
+# RAG Application with Azure services and Docling
 
 This repository contains a Retrieval-Augmented Generation (RAG) application that uses Azure OpenAI for embeddings and chat completions, and Azure Cognitive Search for vector search capabilities.
 
