@@ -38,14 +38,18 @@ pip install -r requirements.txt
 
 4. Create a `.env` file in the root directory and add the following variables:
 ```env
-AZURE_OPENAI_ENDPOINT=your_openai_endpoint
 AZURE_OPENAI_API_KEY=your_openai_api_key
-AZURE_OPENAI_CHAT_DEPLOYMENT=your_chat_deployment
-AZURE_OPENAI_EMBED_DEPLOYMENT=your_embedding_deployment
-AZURE_SEARCH_ENDPOINT=your_search_endpoint
+AZURE_OPENAI_ENDPOINT='your_openai_endpoint'
+
+AZURE_OPENAI_CHAT_DEPLOYMENT='gpt-oss-120b'
+AZURE_OPENAI_CHAT_API_VERSION = "2024-05-01-preview"
+AZURE_OPENAI_EMBED_DEPLOYMENT='text-embedding-ada-002'
+AZURE_OPENAI_EMBED_API_VERSION = "2023-05-15"
+EMBEDING_DIM = 1536
+
+AZURE_SEARCH_ENDPOINT='your_search_endpoint'
+AZURE_SEARCH_INDEX='index_name'
 AZURE_SEARCH_API_KEY=your_search_api_key
-AZURE_SEARCH_INDEX=your_index_name
-EMBEDING_DIM=1536
 ```
 
 ## Running the Application
