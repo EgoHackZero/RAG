@@ -2,6 +2,7 @@
 # pip install langchain-docling langchain-core langchain python-dotenv
 # pip install "docling~=2.12" azure-search-documents==11.5.2 azure-identity openai rich torch python-dotenv
 import os
+import re
 import logging
 from typing import List
 from typing import Optional
