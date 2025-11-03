@@ -14,117 +14,154 @@ This repository contains a Retrieval-Augmented Generation (RAG) application that
 
 - Python 3.8+
 - Azure OpenAI account
-- Azure Cognitive Search account
+# RAG — Retrieval-Augmented Generation (Azure OpenAI + Azure Cognitive Search)
 
-## Installation
+This repository contains a small RAG demo: a FastAPI backend that indexes documents with Azure Cognitive Search (vector search) and answers user questions using Azure OpenAI chat + embeddings. A Streamlit frontend provides a simple UI to upload documents and ask questions.
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/rag-application.git
-cd rag-application
+This README is focused on running the project locally on Windows (cmd) and includes exact commands and examples.
+
+## What is included
+
+- `app/` — FastAPI backend and `rag_engine.py` (engine that handles indexing, embedding, retrieval and answering)
+- `frontend/` — Streamlit app (`app.py`) and small config
+- `test.py` — small example client to query the `/query` endpoint
+- `README.md` — this file
+
+## Requirements
+
+- Python 3.8+
+- Azure OpenAI access (endpoint + API key)
+- Azure Cognitive Search (endpoint + API key)
+- Recommended: create a Python venv
+
+Optional (if you don't have Azure): you can adapt the engine to use another embedding/search backend, but the provided code expects Azure services.
+
+## Environment variables (.env)
+
+Create a `.env` file in the repository root (same level as `app/` and `frontend/`) with the following values:
+
+```
+AZURE_OPENAI_ENDPOINT=https://your-openai-resource.openai.azure.com
+AZURE_OPENAI_API_KEY=your_openai_key
+AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o                # or your chat deployment name
+AZURE_OPENAI_EMBED_DEPLOYMENT=text-embedding-3-large
+AZURE_SEARCH_ENDPOINT=https://your-search-service.search.windows.net
+AZURE_SEARCH_API_KEY=your_search_key
+AZURE_SEARCH_INDEX=rag-index                        # name used for the index
+EMBEDING_DIM=1536                                   # embedding dimension used by model
 ```
 
-2. Create a virtual environment:
-```bash
+Make sure the values match your Azure deployments and index configuration.
+
+## Install dependencies
+
+If `requirements.txt` exists, install it. From repository root on Windows (cmd):
+
+```cmd
 python -m venv venv
-source venv/bin/activate  # for Linux/Mac
-venv\Scripts\activate     # for Windows
-```
-
-3. Install dependencies:
-```bash
+venv\\Scripts\\activate
 pip install -r requirements.txt
 ```
 
-4. Create a `.env` file in the root directory and add the following variables:
-```env
-AZURE_OPENAI_API_KEY=your_openai_api_key
-AZURE_OPENAI_ENDPOINT='your_openai_endpoint'
+If you don't have `requirements.txt`, install the main packages used in the project:
 
-AZURE_OPENAI_CHAT_DEPLOYMENT='gpt-oss-120b'
-AZURE_OPENAI_CHAT_API_VERSION = "2024-05-01-preview"
-AZURE_OPENAI_EMBED_DEPLOYMENT='text-embedding-ada-002'
-AZURE_OPENAI_EMBED_API_VERSION = "2023-05-15"
-EMBEDING_DIM = 1536
-
-AZURE_SEARCH_ENDPOINT='your_search_endpoint'
-AZURE_SEARCH_INDEX='index_name'
-AZURE_SEARCH_API_KEY=your_search_api_key
+```cmd
+pip install fastapi uvicorn python-dotenv python-multipart requests streamlit rich docling azure-search-documents azure-identity openai langgraph
 ```
 
-## Running the Application
+Note: `docling` and `langgraph` may require additional native dependencies; check their docs if installation fails.
 
-1. Start the backend:
-```bash
+## Run backend (FastAPI)
+
+Start the backend from repository root (cmd):
+
+```cmd
 cd app
-uvicorn main:app --reload
+venv\\Scripts\\activate      # if not already activated
+uvicorn main:app --reload --port 8000
 ```
 
-2. The API will be available at: `http://localhost:8000`
+The backend endpoints:
 
-## API Endpoints
+- POST /initialize — create or recreate the Azure Cognitive Search index
+- POST /upload — upload and index files (multipart form, field name `files`)
+- POST /query — send a JSON body {"question": "..."} and get a generated answer + debug info
 
-### POST /initialize
-Initializes the search index in Azure Cognitive Search.
+Quick curl example (Windows cmd):
 
-### POST /upload
-Uploads and indexes documents. Accepts multiple files.
-
-### POST /query
-Processes user query and returns response based on indexed documents.
-
-Example request:
-```json
-{
-    "question": "What is attention mechanism?"
-}
-```
-
-## Project Structure
-
-```
-app/
-├── main.py              # FastAPI application
-├── rag_engine.py        # Core RAG engine
-└── requirements.txt     # Project dependencies
-```
-
-## Usage
-
-1. First, initialize the index:
-```bash
+```cmd
 curl -X POST http://localhost:8000/initialize
+
+curl -X POST -F "files=@C:\\path\\to\\doc1.pdf" -F "files=@C:\\path\\to\\doc2.txt" http://localhost:8000/upload
+
+curl -X POST -H "Content-Type: application/json" -d "{\\"question\\": \\"What is attention mechanism?\\"}" http://localhost:8000/query
 ```
 
-2. Upload documents:
-```bash
-curl -X POST -F "files=@document1.pdf" -F "files=@document2.txt" http://localhost:8000/upload
+Or use the provided `test.py` (from repo root):
+
+```cmd
+venv\\Scripts\\activate
+python test.py
 ```
 
-3. Send a query:
-```bash
-curl -X POST -H "Content-Type: application/json" -d '{"question":"What is attention mechanism?"}' http://localhost:8000/query
+## Run frontend (Streamlit)
+
+From repository root:
+
+```cmd
+venv\\Scripts\\activate
+streamlit run frontend\\app.py
 ```
 
-## Frontend
+Streamlit UI will open in your browser (default: http://localhost:8501). The UI provides:
 
-For the frontend part, we use [streamlit](https://streamlit.io/) as a simple and effective solution for creating the user interface. Install it:
+- Initialize Index button (calls `/initialize`)
+- Document upload widget (sends files to `/upload`)
+- Chat: enter questions and receive answers; processing details are shown under each answer
 
-```bash
-pip install streamlit
-```
+Notes:
 
-## Security
+- Uploading files creates a temporary folder `temp_uploads` on the server which is removed after indexing.
+- Logs are written to `rag.txt` (in the working directory) by default.
 
-- Configure CORS policy in `main.py` for production
-- Use secure secret storage
-- Add authentication for API endpoints
-- Set up rate limiting
+## Example flow
+
+1. Start backend (uvicorn).
+2. Start frontend (streamlit).
+3. In the frontend sidebar, press `Initialize Index`.
+4. Upload 1..N files via the Document Upload widget — click `Upload Selected Files`.
+5. Ask a question in the main UI.
+
+The UI will show the generated answer and a `Processing Details` expander with `rewrites` and `ranked` debug info returned from the engine.
+
+## Troubleshooting
+
+- Missing environment variables: the backend will raise a KeyError. Ensure `.env` is present and correct.
+- `docling` conversion errors: some file types or encodings may fail to convert — check `rag.txt` for details.
+- Azure authentication errors: verify keys/endpoints and that the Azure resources exist and deployments are correct.
+- If indexing fails due to schema or vectorizer mismatches, check `EMBEDING_DIM` and vectorizer/deployment names.
+
+## Security & Production
+
+- Do NOT use `allow_origins=["*"]` in production. Limit origins to your frontend URL.
+- Store secrets in a secure vault or environment (don't commit `.env` to git).
+- Add authentication and rate limiting for public deployments.
+
+## Development notes
+
+- `rag_engine.py` is the place to adapt behaviour (e.g., switch embedding/source or change chunking strategy).
+- `frontend/app.py` is a minimal Streamlit client; you can replace it with a React/Next.js app if you prefer a more advanced UI.
 
 ## License
 
 MIT
 
-## Support
+---
 
-If you encounter any issues, please create an issue in the project repository.
+If you want, I can:
+
+- Add a `requirements.txt` pinned file for Windows
+- Add a small Dockerfile to run backend+frontend
+- Add automated tests for `/query` and `/upload`
+
+Tell me which of these you want next.

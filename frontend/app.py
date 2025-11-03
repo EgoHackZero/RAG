@@ -51,18 +51,14 @@ def query_rag(question):
         return None
 
 def main():
-    # Title
     st.title("🤖 RAG Assistant")
     
-    # Sidebar for file upload and initialization
     with st.sidebar:
         st.header("Settings")
         
-        # Initialize button
         if st.button("Initialize Index"):
             initialize_index()
         
-        # File upload
         st.subheader("Document Upload")
         uploaded_files = st.file_uploader(
             "Choose files to upload",
@@ -74,14 +70,11 @@ def main():
             if st.button("Upload Selected Files"):
                 upload_files(uploaded_files)
     
-    # Main chat area
     st.header("Ask your question")
     
-    # Initialize message history in session state
     if "messages" not in st.session_state:
         st.session_state.messages = []
     
-    # Display message history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.write(message["content"])
@@ -89,29 +82,23 @@ def main():
                 with st.expander("Processing Details"):
                     st.json(message["debug"])
     
-    # Question input field
     if prompt := st.chat_input("Enter your question"):
-        # Add user question to history
         st.session_state.messages.append({"role": "user", "content": prompt})
         
-        # Display question
         with st.chat_message("user"):
             st.write(prompt)
         
-        # Get response from RAG
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 response = query_rag(prompt)
                 if response:
                     st.write(response["answer"])
-                    # Save response to history
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": response["answer"],
                         "debug": response["debug"]
                     })
                     
-                    # Show processing details
                     with st.expander("Processing Details"):
                         st.json(response["debug"])
 

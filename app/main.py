@@ -36,21 +36,17 @@ async def initialize_index():
 async def upload_files(files: List[UploadFile] = File(...)):
     """Upload documents for indexing"""
     try:
-        # Create temporary directory for uploaded files
         upload_dir = "temp_uploads"
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir)
 
-        # Save uploaded files
         for file in files:
             file_path = os.path.join(upload_dir, file.filename)
             with open(file_path, "wb+") as file_object:
                 shutil.copyfileobj(file.file, file_object)
 
-        # Index documents
         uploaded_docs = rag_engine.load_documents(upload_dir)
 
-        # Clean up temporary directory
         shutil.rmtree(upload_dir)
 
         return {
