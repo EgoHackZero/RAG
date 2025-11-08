@@ -233,12 +233,9 @@ The system detected Russian, translated to English for search, and responded in 
 ### Test Files
 
 The project includes several test scripts:
-
-- **`test_citation_count.py`**: Debug script for citation counting accuracy
 - **`test_end_to_end_citations.py`**: Full workflow test for citation queries
 - **`test_usage_of_backend.py`**: Standalone RAG engine test (no FastAPI)
 - **`test_call_to_app.py`**: HTTP client test for `/query` endpoint
-- **`test_simplified.py`**: Tests simplified RAG workflow
 - **`test_api_multilingual.py`**: Tests queries in multiple languages
 
 ### Run Tests
